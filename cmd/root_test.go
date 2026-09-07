@@ -253,4 +253,3 @@ func TestGenerateUUIDCommand(t *testing.T) {
 		}
 	})
 }
-

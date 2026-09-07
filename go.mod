@@ -1,6 +1,5 @@
 module github.com/kaioa1meida/utility-belt
-
-go 1.27.0
+go 1.21
 
 require (
 	github.com/google/uuid v1.6.0

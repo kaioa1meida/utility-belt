@@ -77,4 +77,3 @@ func GeneratePasswords(opts PasswordOptions) ([]string, error) {
 
 	return passwords, nil
 }
-
