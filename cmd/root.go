@@ -27,6 +27,8 @@ handy developer utilities for everyday workflows.`,
 	}
 
 	rootCmd.AddCommand(NewGenerateCmd())
+	rootCmd.AddCommand(NewEncodeCmd())
+	rootCmd.AddCommand(NewDecodeCmd())
 
 	return rootCmd
 }

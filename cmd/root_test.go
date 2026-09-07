@@ -2,37 +2,47 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 var canonicalUUIDRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-func executeCommand(args ...string) (stdout string, stderr string, err error) {
+func executeCommandWithInput(input string, args ...string) (stdout string, stderr string, err error) {
 	outBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
 
 	rootCmd := NewRootCmd(outBuf, errBuf)
+	if input != "" {
+		rootCmd.SetIn(bytes.NewBufferString(input))
+	}
 	rootCmd.SetArgs(args)
 
 	err = rootCmd.Execute()
 	return outBuf.String(), errBuf.String(), err
 }
 
+func executeCommand(args ...string) (stdout string, stderr string, err error) {
+	return executeCommandWithInput("", args...)
+}
+
 func TestRootCommand(t *testing.T) {
-	t.Run("root help output", func(t *testing.T) {
+	t.Run("root help output lists categories", func(t *testing.T) {
 		out, _, err := executeCommand("--help")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !strings.Contains(out, "utility-belt") {
-			t.Errorf("expected help output to contain 'utility-belt', got %q", out)
-		}
-		if !strings.Contains(out, "generate") {
-			t.Errorf("expected help output to list 'generate' command, got %q", out)
+		for _, cat := range []string{"utility-belt", "generate", "encode", "decode"} {
+			if !strings.Contains(out, cat) {
+				t.Errorf("expected help output to contain %q, got %q", cat, out)
+			}
 		}
 	})
 
@@ -43,6 +53,26 @@ func TestRootCommand(t *testing.T) {
 		}
 		if !strings.Contains(out, "password") || !strings.Contains(out, "uuid") {
 			t.Errorf("expected generate help to list 'password' and 'uuid', got %q", out)
+		}
+	})
+
+	t.Run("encode help output", func(t *testing.T) {
+		out, _, err := executeCommand("encode", "--help")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "base64") {
+			t.Errorf("expected encode help to list 'base64', got %q", out)
+		}
+	})
+
+	t.Run("decode help output", func(t *testing.T) {
+		out, _, err := executeCommand("decode", "--help")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "base64") || !strings.Contains(out, "jwt") {
+			t.Errorf("expected decode help to list 'base64' and 'jwt', got %q", out)
 		}
 	})
 
@@ -250,6 +280,202 @@ func TestGenerateUUIDCommand(t *testing.T) {
 			if !strings.Contains(out, expected) {
 				t.Errorf("expected uuid help to contain %q", expected)
 			}
+		}
+	})
+}
+
+func TestEncodeBase64Command(t *testing.T) {
+	t.Run("encode via flag --string", func(t *testing.T) {
+		out, errOut, err := executeCommand("encode", "base64", "--string", "hello")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if errOut != "" {
+			t.Errorf("expected empty stderr, got %q", errOut)
+		}
+		if strings.TrimSpace(out) != "aGVsbG8=" {
+			t.Errorf("expected aGVsbG8=, got %q", out)
+		}
+	})
+
+	t.Run("encode via stdin pipe", func(t *testing.T) {
+		out, errOut, err := executeCommandWithInput("hello", "encode", "base64")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if errOut != "" {
+			t.Errorf("expected empty stderr, got %q", errOut)
+		}
+		if strings.TrimSpace(out) != "aGVsbG8=" {
+			t.Errorf("expected aGVsbG8=, got %q", out)
+		}
+	})
+
+	t.Run("encode without input returns error", func(t *testing.T) {
+		out, _, err := executeCommand("encode", "base64")
+		if err == nil {
+			t.Fatal("expected error when no input provided, got nil")
+		}
+		if out != "" {
+			t.Errorf("expected empty stdout on error, got %q", out)
+		}
+	})
+
+	t.Run("encode help contains flag and description", func(t *testing.T) {
+		out, _, err := executeCommand("encode", "base64", "--help")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "--string") {
+			t.Errorf("expected help to describe --string flag, got %q", out)
+		}
+	})
+}
+
+func TestDecodeBase64Command(t *testing.T) {
+	t.Run("decode via flag --string", func(t *testing.T) {
+		out, errOut, err := executeCommand("decode", "base64", "--string", "aGVsbG8=")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if errOut != "" {
+			t.Errorf("expected empty stderr, got %q", errOut)
+		}
+		if strings.TrimSpace(out) != "hello" {
+			t.Errorf("expected hello, got %q", out)
+		}
+	})
+
+	t.Run("decode via stdin pipe", func(t *testing.T) {
+		out, errOut, err := executeCommandWithInput("aGVsbG8=", "decode", "base64")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if errOut != "" {
+			t.Errorf("expected empty stderr, got %q", errOut)
+		}
+		if strings.TrimSpace(out) != "hello" {
+			t.Errorf("expected hello, got %q", out)
+		}
+	})
+
+	t.Run("decode invalid base64 returns error", func(t *testing.T) {
+		out, _, err := executeCommandWithInput("invalid!!!", "decode", "base64")
+		if err == nil {
+			t.Fatal("expected error for invalid base64, got nil")
+		}
+		if out != "" {
+			t.Errorf("expected empty stdout on error, got %q", out)
+		}
+	})
+
+	t.Run("decode without input returns error", func(t *testing.T) {
+		out, _, err := executeCommand("decode", "base64")
+		if err == nil {
+			t.Fatal("expected error when no input provided, got nil")
+		}
+		if out != "" {
+			t.Errorf("expected empty stdout on error, got %q", out)
+		}
+	})
+
+	t.Run("decode help contains flag and description", func(t *testing.T) {
+		out, _, err := executeCommand("decode", "base64", "--help")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "--string") {
+			t.Errorf("expected help to describe --string flag, got %q", out)
+		}
+	})
+}
+
+func TestDecodeJWTCommand(t *testing.T) {
+	specToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+
+	t.Run("decode valid JWT via flag --string", func(t *testing.T) {
+		out, errOut, err := executeCommand("decode", "jwt", "--string", specToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if errOut != "" {
+			t.Errorf("expected empty stderr, got %q", errOut)
+		}
+
+		var parsed struct {
+			Header  map[string]any `json:"header"`
+			Payload map[string]any `json:"payload"`
+		}
+		if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+			t.Fatalf("failed to unmarshal JSON output %q: %v", out, err)
+		}
+		if parsed.Header["alg"] != "HS256" {
+			t.Errorf("expected alg HS256, got %v", parsed.Header["alg"])
+		}
+		if parsed.Payload["sub"] != "1234567890" {
+			t.Errorf("expected sub 1234567890, got %v", parsed.Payload["sub"])
+		}
+	})
+
+	t.Run("decode valid JWT via stdin pipe", func(t *testing.T) {
+		out, errOut, err := executeCommandWithInput(specToken, "decode", "jwt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if errOut != "" {
+			t.Errorf("expected empty stderr, got %q", errOut)
+		}
+
+		if !strings.Contains(out, `"sub": "1234567890"`) {
+			t.Errorf("expected output to contain payload sub, got %q", out)
+		}
+	})
+
+	t.Run("decode expired JWT prints warning to stderr and json to stdout", func(t *testing.T) {
+		past := time.Now().Add(-1 * time.Hour).Unix()
+		header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+		payload := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"sub":"user1","exp":%d}`, past)))
+		token := fmt.Sprintf("%s.%s.sig", header, payload)
+
+		out, errOut, err := executeCommand("decode", "jwt", "--string", token)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(errOut, "warning: token is expired") {
+			t.Errorf("expected warning in stderr, got %q", errOut)
+		}
+		if !strings.Contains(out, `"sub": "user1"`) {
+			t.Errorf("expected json payload in stdout, got %q", out)
+		}
+	})
+
+	t.Run("decode invalid JWT format returns error", func(t *testing.T) {
+		out, _, err := executeCommand("decode", "jwt", "--string", "invalid.jwt")
+		if err == nil {
+			t.Fatal("expected error for 2-part jwt, got nil")
+		}
+		if out != "" {
+			t.Errorf("expected empty stdout on error, got %q", out)
+		}
+	})
+
+	t.Run("decode jwt without input returns error", func(t *testing.T) {
+		out, _, err := executeCommand("decode", "jwt")
+		if err == nil {
+			t.Fatal("expected error when no input provided, got nil")
+		}
+		if out != "" {
+			t.Errorf("expected empty stdout on error, got %q", out)
+		}
+	})
+
+	t.Run("jwt help contains flag and description", func(t *testing.T) {
+		out, _, err := executeCommand("decode", "jwt", "--help")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "--string") {
+			t.Errorf("expected help to describe --string flag, got %q", out)
 		}
 	})
 }
