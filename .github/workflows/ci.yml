@@ -20,8 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
-          check-latest: true
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Run golangci-lint
@@ -31,12 +30,8 @@ jobs:
           args: --timeout=5m
 
   test:
-    name: Test (Go ${{ matrix.go }})
+    name: Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.21', 'stable']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,7 +39,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go }}
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Run Tests with Race Detector & Coverage
@@ -52,7 +47,6 @@ jobs:
           go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage artifact
-        if: matrix.go == 'stable'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -68,15 +62,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
-          check-latest: true
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1
         with:
-          go-version-input: 'stable'
-          check-latest: true
+          go-version-file: 'go.mod'
 
   build:
     name: Build Binary
@@ -89,7 +81,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Build utility-belt

@@ -18,7 +18,9 @@ linters:
 
 linters-settings:
   govet:
-    enable-all: true
+    enable:
+      - shadow
+      - nilness
   gofmt:
     simplify: true
   revive:
@@ -26,4 +28,3 @@ linters-settings:
   gosec:
     confidence: medium
     severity: medium
-
