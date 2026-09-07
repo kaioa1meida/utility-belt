@@ -200,4 +200,3 @@ func TestGeneratePasswords(t *testing.T) {
 		})
 	}
 }
-
